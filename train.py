@@ -315,7 +315,7 @@ tokenizer.pad_token = tokenizer.eos_token
 
 # Initialize the GRPO trainer
 trainer = GRPOTrainer(
-    model="Qwen/Qwen2.5-Coder-0.5B-Instruct",
+    model="Qwen/Qwen2.5-Coder-7B-Instruct",
     # tokenizer=tokenizer,
     reward_funcs=html_quality_reward,
     args=training_args,
