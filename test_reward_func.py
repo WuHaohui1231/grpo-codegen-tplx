@@ -7,45 +7,8 @@ import re
 import json
 from html.parser import HTMLParser
 
-# Load local JSON dataset for HTML generation
-def load_local_dataset(json_path):
-    """
-    Load a local JSON dataset in the format:
-    [
-      { "prompt": "...", "content": "..." },
-      { "prompt": "...", "content": "..." },
-      ...
-    ]
-    
-    Returns a Dataset object compatible with GRPO training
-    """
-    # Load the JSON file
-    with open(json_path, 'r') as f:
-        data = json.load(f)
-    
-    # Extract prompts and completions
-    prompts = [item["prompt"] for item in data]
-    completions = [item["completion"] for item in data]
-    
-    # Create a dictionary in the format expected by Dataset.from_dict
-    dataset_dict = {
-        "prompt": prompts,  # The prompts
-        "completion": completions,  # The completions (HTML content)
-    }
-    
-    # Create and return the Dataset
-    return Dataset.from_dict(dataset_dict)
+data_file = "/ephemeral/grpo-data/dojo_sft_js_grpo-format.json"
 
-# Path to your JSON file - update this to point to your actual JSON file
-json_dataset_path = "/ephemeral/grpo-data/dojo_sft_js_grpo-format.json"  
-
-# Load the dataset
-dataset = load_local_dataset(json_dataset_path)
-
-# You can also limit the dataset size for faster experimentation
-# dataset = dataset.select(range(min(5, len(dataset))))
-
-# Define a reward function for HTML quality
 def html_quality_reward(completions, prompts, **kwargs):
     """
     Reward function for HTML generation quality.
@@ -111,61 +74,6 @@ def html_quality_reward(completions, prompts, **kwargs):
             except Exception:
                 validity_score = 0
                 
-            # # 2. Structure completeness check
-            # has_doctype = '<!DOCTYPE html>' in html.lower() or '<!doctype html>' in html.lower()
-            # has_html_tag = bool(soup.find('html'))
-            # has_head = bool(soup.find('head'))
-            # has_body = bool(soup.find('body'))
-            # structure_score = (0.5 if has_doctype else 0) + \
-            #                   (0.5 if has_html_tag else 0) + \
-            #                   (0.5 if has_head else 0) + \
-            #                   (0.5 if has_body else 0)
-            
-            # # 3. Semantic HTML usage
-            # semantic_tags = ['header', 'footer', 'nav', 'main', 'section', 'article', 
-            #                 'aside', 'figure', 'figcaption', 'time']
-            # semantic_count = sum(1 for tag in semantic_tags if soup.find(tag))
-            # semantic_score = min(2, semantic_count / 5)  # Max 2 points, need 5+ semantic tags for full score
-            
-            # # 4. Accessibility check
-            # img_tags = soup.find_all('img')
-            # imgs_with_alt = sum(1 for img in img_tags if img.get('alt'))
-            # a_tags = soup.find_all('a')
-            # a_with_text = sum(1 for a in a_tags if a.text.strip())
-            
-            # # Calculate accessibility score (max 2)
-            # if img_tags:
-            #     img_alt_ratio = imgs_with_alt / len(img_tags)
-            # else:
-            #     img_alt_ratio = 1  # No images = perfect alt score
-                
-            # if a_tags:
-            #     a_text_ratio = a_with_text / len(a_tags)
-            # else:
-            #     a_text_ratio = 1  # No links = perfect link text score
-                
-            # accessibility_score = (img_alt_ratio + a_text_ratio) / 2 * 2
-            
-            # # 5. Responsiveness check
-            # has_meta_viewport = bool(soup.find('meta', attrs={'name': 'viewport'}))
-            # has_media_queries = 'media' in html or '@media' in html
-            # responsive_classes = re.search(r'class=["\'](.*?)(responsive|container|row|col|flex|grid|sm-|md-|lg-|xl-)', html, re.IGNORECASE)
-            
-            # responsive_score = (0.7 if has_meta_viewport else 0) + \
-            #                    (0.7 if has_media_queries else 0) + \
-            #                    (0.6 if responsive_classes else 0)
-            # responsive_score = min(2, responsive_score)  # Cap at 2
-            
-            # # 6. Content relevance (basic check if it contains expected elements)
-            # divs = len(soup.find_all('div'))
-            # paragraphs = len(soup.find_all('p'))
-            # headings = len(soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']))
-            
-            # content_score = min(1, (divs + paragraphs + headings) / 10)
-            
-            # # 7. Calculate total reward (max 9) for existing metrics
-            # base_reward = validity_score + structure_score + semantic_score + \
-            #         accessibility_score + responsive_score + content_score
             
             base_reward = validity_score
                     
@@ -286,63 +194,21 @@ def html_quality_reward(completions, prompts, **kwargs):
             
         except Exception as e:
             # Fallback to a basic length-based score if analysis fails
-            reward = min(len(html) / 500, 1)  # Simple fallback, max 2 points
-            
+            reward = min(len(html) / 500, 2)  # Simple fallback, max 2 points
+        
+
+        print(i, " R: ", reward, "P: ", prompts[i][:50], "C:", html[:50])    
         rewards.append(reward)
         
     return rewards
 
-# Configure the training
-training_args = GRPOConfig(
-    output_dir="/ephemeral/checkpoints/Qwen2.5-Coder-7B-GRPO",
-    num_train_epochs=1,
-    per_device_train_batch_size=2,
-    gradient_accumulation_steps=4,
-    max_completion_length=2048,
-    learning_rate=1e-5,
-    logging_steps=10,
-    num_generations=2,
-    save_steps=30,
-    weight_decay=0.01,
-    lr_scheduler_type="cosine",
-    beta=0.02,
-    bf16=True,  # Use mixed precision training
-    logging_dir="Log-Qwen2.5-Coder-7B-GRPO",
-    deepspeed="deepspeed_config_grpo.json",
-)
 
-# Initialize the tokenizer
-tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-7B-Instruct")
-tokenizer.pad_token = tokenizer.eos_token
+with open(data_file, 'r') as f:
+    data = json.load(f)
 
-# Initialize the GRPO trainer
-trainer = GRPOTrainer(
-    model="Qwen/Qwen2.5-Coder-7B-Instruct",
-    # tokenizer=tokenizer,
-    reward_funcs=html_quality_reward,
-    args=training_args,
-    train_dataset=dataset,
-    # max_length=1024,
-    # max_prompt_length=256,
-    # input_field="input",  # The field containing the prompts in our dataset
-    # completion_field="completion",  # The field containing the completions in our dataset
-)
+completions = [item["completion"] for item in data]
+prompts = [item["prompt"] for item in data]
 
-# Define a callback to pass prompts to the reward function
-# class PromptAwareRewardCallback:
-#     def __init__(self, dataset):
-#         self.dataset = dataset
-#         self.prompt_map = {i: item["input"] for i, item in enumerate(dataset)}
-        
-#     def on_evaluate_completion(self, args, kwargs, batch_indices, **callback_kwargs):
-#         # Add prompts to the kwargs that will be passed to the reward function
-#         batch_prompts = [self.prompt_map[int(idx)] for idx in batch_indices]
-#         kwargs["prompts"] = batch_prompts
-#         return args, kwargs
+rewards = html_quality_reward(completions, prompts)
 
-# # Add the callback to the trainer
-# trainer.add_callback(PromptAwareRewardCallback(dataset))
-
-# Start training
-trainer.train()
-
+print(rewards)
