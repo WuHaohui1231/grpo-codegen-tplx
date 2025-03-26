@@ -294,7 +294,7 @@ def html_quality_reward(completions, prompts, **kwargs):
 
 # Configure the training
 training_args = GRPOConfig(
-    output_dir="/ephemeral/checkpoints/Qwen2.5-Coder-7B-GRPO",
+    output_dir="/ephemeral/checkpoints/Qwen2.5-Coder-7B-GRPO", # NOTE: Directory to save the model checkpoints. Change if necessary.
     num_train_epochs=1,
     per_device_train_batch_size=2,
     gradient_accumulation_steps=4,
